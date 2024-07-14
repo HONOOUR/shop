@@ -1,9 +1,18 @@
 package com.jieun.shop.service;
 
-import com.jieun.shop.domain.dto.ItemDto;
-import com.jieun.shop.domain.dto.ItemResponse;
+import com.jieun.shop.domain.ItemsByCategoryResponse;
+import com.jieun.shop.domain.dto.*;
+import com.jieun.shop.entity.Brand;
+import com.jieun.shop.entity.Category;
+import com.jieun.shop.entity.Item;
+import com.jieun.shop.repository.BrandRepository;
+import com.jieun.shop.repository.CategoryRepository;
 import com.jieun.shop.repository.ItemQueryRepository;
-import java.util.List;
+
+import java.util.*;
+import java.util.stream.Collectors;
+
+import com.jieun.shop.repository.ItemRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -11,15 +20,108 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class ItemService {
 
-
     private final ItemQueryRepository itemQueryRepository;
+    private final CategoryRepository categoryRepository;
+    private final BrandRepository brandRepository;
+    private final ItemRepository itemRepository;
 
     public ItemResponse getItemsWithLowestPrice() {
-        List<ItemDto> items = itemQueryRepository.findByLowestPriceInCategories();
+        HashMap<Long, Integer> lowestPricesPerCategory = itemQueryRepository.findLowestPricesPerCategory();
+        Map<Long, ItemDto> items = itemQueryRepository.findAll().stream()
+                .filter(item -> lowestPricesPerCategory.containsKey(item.getCategoryId())
+                        && item.getPrice().equals(lowestPricesPerCategory.get(item.getCategoryId())))
+                .sorted(Comparator.comparing(ItemDto::getBrandName).reversed())
+                .collect(Collectors.toMap(
+                        ItemDto::getCategoryId,
+                        item -> item,
+                        (existing, replacement) -> existing,
+                        LinkedHashMap::new
+                ));
 
         return ItemResponse.builder()
-            .items(items)
-            .totalPrice(items.stream().mapToInt(ItemDto::getPrice).sum())
+            .items(items.values().stream().sorted(Comparator.comparing(ItemDto::getCategoryId)).toList())
+            .totalPrice(items.values().stream().toList().stream().mapToInt(item -> Integer.valueOf(item.getPrice())).sum())
             .build();
+    }
+
+    public ItemsByBrandResponse getItemsWithLowestTotalPriceByAllCategoriesAndSameBrand() {
+        BrandWithTotalPriceDto brandWithTotalPriceDto = itemQueryRepository.findBrandAndLowestPricesTotal();
+        List<ItemDto> items = itemQueryRepository.findAllByBrand(brandWithTotalPriceDto.getBrand());
+
+        return ItemsByBrandResponse.builder()
+                .itemsByBrand(ItemsByBrandDto.builder()
+                        .brandName(brandWithTotalPriceDto.getBrand().getName())
+                        .items(items)
+                        .totalPrice(brandWithTotalPriceDto.getTotalPrice().toString()).build())
+                .build();
+
+    }
+
+    public ItemsByCategoryResponse getLowestAndHighestPriceItem(String categoryName) {
+        Category category = categoryRepository.findByName(categoryName).orElseThrow(
+                () -> new RuntimeException("카테고리 이름을 찾을 수 없습니다.")
+        );
+
+        List<ItemDto> items = itemQueryRepository.findAllByCategory(category);
+
+        return ItemsByCategoryResponse.builder()
+                .categoryName(categoryName)
+                .itemWithLowestPrice(Collections.singletonList(items.get(0)))
+                .itemWithHighestPrice(Collections.singletonList(items.get(items.size()-1))).build();
+    }
+
+    public void addItem(ItemRequest itemRequest) {
+        if (Objects.isNull(itemRequest.getBrandName()) || Objects.isNull(itemRequest.getCategoryId())) {
+            throw new RuntimeException("필수 파라미터가 없습니다.");
+        }
+
+        Brand brand = brandRepository.findByName(itemRequest.getBrandName())
+                .orElse(Brand.builder()
+                        .name(itemRequest.getBrandName()).build());
+
+        Category category = categoryRepository.findById(itemRequest.getCategoryId()).orElseThrow(
+                () -> new RuntimeException("카테고리를 찾을 수 없습니다.")
+        );
+
+
+        if (!itemRepository.findAllByCategoryAndBrand(category, brand).isEmpty()) {
+            throw new RuntimeException("이미 있는 상품입니다.");
+        }
+
+        itemRepository.save(Item.builder()
+                .category(category)
+                .brand(brand)
+                .price(itemRequest.getPrice()).build());
+    }
+
+    public void modify(ItemRequest itemRequest) {
+        if (Objects.isNull(itemRequest.getBrandId()) || Objects.isNull(itemRequest.getCategoryId())
+                || Objects.isNull(itemRequest.getPrice())) {
+            throw new RuntimeException("필수 파라미터가 없습니다.");
+        }
+
+        Brand brand = brandRepository.findById(itemRequest.getBrandId()).orElseThrow(
+                () -> new RuntimeException("브랜드를 찾을 수 없습니다.")
+        );
+
+        Category category = categoryRepository.findById(itemRequest.getCategoryId()).orElseThrow(
+                () -> new RuntimeException("카테고리를 찾을 수 없습니다.")
+        );
+
+        List<Item> items = itemRepository.findAllByCategoryAndBrand(category, brand);
+        if (items.isEmpty()) {
+            throw new RuntimeException("존재하지 않는 상품입니다.");
+        }
+
+        items.get(0).setPrice(itemRequest.getPrice());
+        itemRepository.save(items.get(0));
+    }
+
+    public void removeItem(Long itemId) {
+        if (Objects.isNull(itemId)) {
+            throw new RuntimeException("필수 파라미터가 없습니다.");
+        }
+
+        itemRepository.deleteById(itemId);
     }
 }
