@@ -9,6 +9,8 @@ import lombok.experimental.FieldDefaults;
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class ItemRequest {
 
+    Long itemId;
+
     Long categoryId;
 
     Long brandId;

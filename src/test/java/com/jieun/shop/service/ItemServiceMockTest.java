@@ -56,9 +56,8 @@ class ItemServiceMockTest {
 
         // then
         ItemResponse itemResponse = itemService.getItemsWithLowestPrice();
-        Integer totalPrice = itemResponse.getItems().stream()
-                .mapToInt(item -> Integer.valueOf(item.getPrice())).sum();
-        Assertions.assertEquals(totalPrice, itemResponse.getTotalPrice());
+        int totalPrice = itemResponse.getItems().stream().mapToInt(ItemDto::getPrice).sum();
+        Assertions.assertEquals(Integer.toString(totalPrice), itemResponse.getTotalPrice());
     }
 
     @Test

@@ -10,5 +10,5 @@ public class ItemResponse {
 
     List<ItemDto> items;
 
-    Integer totalPrice;
+    String totalPrice;
 }

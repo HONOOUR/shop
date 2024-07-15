@@ -40,7 +40,7 @@ public class ItemService {
 
         return ItemResponse.builder()
             .items(items.values().stream().sorted(Comparator.comparing(ItemDto::getCategoryId)).toList())
-            .totalPrice(items.values().stream().toList().stream().mapToInt(item -> Integer.valueOf(item.getPrice())).sum())
+            .totalPrice(String.valueOf(items.values().stream().toList().stream().mapToInt(ItemDto::getPrice).sum()))
             .build();
     }
 
@@ -75,17 +75,18 @@ public class ItemService {
             throw new RuntimeException("필수 파라미터가 없습니다.");
         }
 
-        Brand brand = brandRepository.findByName(itemRequest.getBrandName())
-                .orElse(Brand.builder()
-                        .name(itemRequest.getBrandName()).build());
-
         Category category = categoryRepository.findById(itemRequest.getCategoryId()).orElseThrow(
-                () -> new RuntimeException("카테고리를 찾을 수 없습니다.")
+            () -> new RuntimeException("카테고리를 찾을 수 없습니다.")
         );
 
-
-        if (!itemRepository.findAllByCategoryAndBrand(category, brand).isEmpty()) {
-            throw new RuntimeException("이미 있는 상품입니다.");
+        Brand brand = brandRepository.findByName(itemRequest.getBrandName()).orElse(null);
+        if (Objects.nonNull(brand) && !itemRepository.findAllByCategoryAndBrand(category, brand).isEmpty()) {
+                throw new RuntimeException("이미 있는 상품입니다.");
+        } else {
+            brand = Brand.builder()
+                .name(itemRequest.getBrandName())
+                .build();
+            brandRepository.save(brand);
         }
 
         itemRepository.save(Item.builder()
@@ -95,26 +96,33 @@ public class ItemService {
     }
 
     public void modify(ItemRequest itemRequest) {
-        if (Objects.isNull(itemRequest.getBrandId()) || Objects.isNull(itemRequest.getCategoryId())
-                || Objects.isNull(itemRequest.getPrice())) {
+        if (Objects.isNull(itemRequest.getItemId()) && (Objects.isNull(itemRequest.getBrandId()) || Objects.isNull(itemRequest.getCategoryId())
+                || Objects.isNull(itemRequest.getPrice()))) {
             throw new RuntimeException("필수 파라미터가 없습니다.");
         }
 
-        Brand brand = brandRepository.findById(itemRequest.getBrandId()).orElseThrow(
-                () -> new RuntimeException("브랜드를 찾을 수 없습니다.")
+        Item item = itemRepository.findById(itemRequest.getItemId()).orElseThrow(
+            () -> new RuntimeException("존재하지 않는 상품입니다.")
         );
 
-        Category category = categoryRepository.findById(itemRequest.getCategoryId()).orElseThrow(
-                () -> new RuntimeException("카테고리를 찾을 수 없습니다.")
-        );
-
-        List<Item> items = itemRepository.findAllByCategoryAndBrand(category, brand);
-        if (items.isEmpty()) {
-            throw new RuntimeException("존재하지 않는 상품입니다.");
+        if (Objects.nonNull(itemRequest.getBrandId())) {
+            item.setBrand(brandRepository.findById(itemRequest.getBrandId()).orElseThrow(
+                () -> new RuntimeException("브랜드를 찾을 수 없습니다."))
+            );
         }
 
-        items.get(0).setPrice(itemRequest.getPrice());
-        itemRepository.save(items.get(0));
+        if (Objects.nonNull(itemRequest.getCategoryId())) {
+            item.setCategory(categoryRepository.findById(itemRequest.getCategoryId())
+                .orElseThrow(
+                    () -> new RuntimeException("카테고리를 찾을 수 없습니다."))
+            );
+        }
+
+        if (Objects.nonNull(itemRequest.getPrice())) {
+            item.setPrice(itemRequest.getPrice());
+        }
+
+        itemRepository.save(item);
     }
 
     public void removeItem(Long itemId) {
